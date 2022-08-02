@@ -1,0 +1,64 @@
+ARG NODE_VERSION=12.18.3
+
+FROM node:${NODE_VERSION}
+RUN apt-get update && apt-get install -y libsecret-1-dev
+ARG version=latest
+WORKDIR /home/theia
+ADD $version.package.json ./package.json
+ARG GITHUB_TOKEN
+RUN yarn install --ignore-engines && \
+    yarn --ignore-engines && \
+    yarn --pure-lockfile && \
+    NODE_OPTIONS="--max_old_space_size=4096" yarn theia build && \
+    yarn theia download:plugins && \
+    yarn --production && \
+    yarn autoclean --init && \
+    echo *.ts >> .yarnclean && \
+    echo *.ts.map >> .yarnclean && \
+    echo *.spec.* >> .yarnclean && \
+    yarn autoclean --force && \
+    yarn cache clean
+
+FROM node:${NODE_VERSION}
+
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y make build-essential libssl-dev \
+    && apt-get install -y libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
+    && apt-get install -y libsecret-1-0 \
+    && apt-get install -y yarn \
+    && apt-get clean \
+    && apt-get auto-remove -y \
+    && rm -rf /var/cache/apt/* \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/*
+
+RUN cd /tmp \
+    && git clone https://github.com/yaoweibin/ngx_http_substitutions_filter_module.git \
+    && wget http://nginx.org/download/nginx-1.20.2.tar.gz \
+    && tar -zxvf nginx-1.20.2.tar.gz \
+    && cd nginx-1.20.2 \
+    && ./configure --add-module=../ngx_http_substitutions_filter_module \
+    && make \
+    && make install \
+    && mkdir -p /etc/nginx/logs \
+    && mkdir -p /var/log/nginx
+
+RUN mkdir -p /home/theia \
+    && mkdir -p /home/project
+ENV HOME /home/theia
+WORKDIR /home/theia
+COPY --from=0 /home/theia /home/theia
+EXPOSE 3000
+ENV SHELL=/bin/bash \
+    THEIA_DEFAULT_PLUGINS=local-dir:/home/theia/plugins
+ENV USE_LOCAL_GIT true
+
+RUN npm install -g n \
+    && n 12.18.3 \
+    && n 16.15.0
+
+COPY nginx.theia.conf /etc/nginx/nginx.conf
+COPY start.theia.sh /start.sh
+
+ENTRYPOINT /start.sh

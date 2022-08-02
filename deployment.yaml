@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ide-lab
+  labels:
+    app: ide-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ide-lab
+  template:
+    metadata:
+      labels:
+        app: ide-lab
+    spec:
+      initContainers:
+      - name: init-src-volume
+        image: 421805900968.dkr.ecr.us-east-2.amazonaws.com/github.com/cloudacademy/js-destructuring-content-image:352d61f
+        imagePullPolicy: Never # Never - use local image, IfNotPresent - pull from remote registry
+        command: ["/bin/sh","-c"]
+        args: ["mv /root/lab/src/* /root/lab/src/.[!.]* /data 2>/dev/null; true"]
+        volumeMounts:
+        - name: src-volume
+          mountPath: /data
+      containers:
+      - name: content
+        image: 421805900968.dkr.ecr.us-east-2.amazonaws.com/github.com/cloudacademy/js-destructuring-content-image:352d61f
+        imagePullPolicy: Never # Never - use local image, IfNotPresent - pull from remote registry
+        env: 
+        - name: ENVIRONMENT
+          value: production
+        ports:
+        - containerPort: 8000 # used by labs_cli (never use port 8000 to avoid conflict)
+        volumeMounts:
+        - name: src-volume
+          mountPath: /root/lab/src
+      - name: workspace
+        image: 421805900968.dkr.ecr.us-east-2.amazonaws.com/cloudacademy/labs-workspace/jsbin:3-0
+        imagePullPolicy: Never # Never - use local image, IfNotPresent - pull from remote registry
+        ports:
+        - containerPort: 3000
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 2
+          periodSeconds: 2
+          timeoutSeconds: 2
+          successThreshold: 1
+          failureThreshold: 10
+        #resources: # Production requests/limits
+        #  requests:
+        #    cpu: 800m
+        #    memory: 1200Mi
+        #  limits:
+        #    cpu: 1700m
+        #    memory: 2000Mi
+        volumeMounts:
+        - name: src-volume
+          mountPath: /home/project
+      volumes:
+      - name: src-volume
+        emptyDir: {}
